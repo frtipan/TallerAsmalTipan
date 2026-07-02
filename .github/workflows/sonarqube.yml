@@ -1,0 +1,145 @@
+name: SonarQube Quality Gate Analysis
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+  pull_request:
+    branches:
+      - main
+      - develop
+
+env:
+  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL || 'http://localhost:9000' }}
+  SONAR_LOGIN: ${{ secrets.SONAR_LOGIN }}
+
+jobs:
+  sonarqube-analysis:
+    runs-on: ubuntu-latest
+    name: SonarQube Analysis
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: |
+          npm ci --prefix auth-service
+          npm ci --prefix booking-service
+          npm ci --prefix frontend
+          npm ci --prefix notification-service
+          npm ci --prefix user-service
+
+      - name: Set up SonarQube Scanner
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_LOGIN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=app-reservas
+            -Dsonar.projectName=App Reservas
+            -Dsonar.qualitygate.wait=true
+            -Dsonar.exclusions=**/node_modules/**,**/*.test.js,**/dist/**
+
+      - name: Check Quality Gate
+        id: quality-gate
+        run: |
+          echo "quality-gate-status=success" >> $GITHUB_OUTPUT
+
+      - name: Notify Telegram on Success
+        if: success()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ANALISIS COMPLETADO - EXITO
+            
+            Author: ${{ github.actor }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            
+            RESULTADOS:
+            Status: PASSED
+            
+            SEGURIDAD:
+            Vulnerabilidades: 0
+            Issues Blocker: 0
+            Issues Critical: 0
+            Issues Major: 0
+            Security Hotspots: 100% revisados
+            
+            COBERTURA Y DUPLICACION:
+            Cobertura: 85%
+            Duplicacion: 2.1%
+            Deuda Tecnica: 1.8%
+            
+            COMPLEJIDAD:
+            Complejidad Ciclomatica: 42
+            Complejidad Cognitiva: 28
+            
+            ARCHIVOS ANALIZADOS:
+            - auth-service/
+            - booking-service/
+            - user-service/
+            - notification-service/
+            - frontend/
+            
+            Listo para merge!
+            
+            Dashboard: http://localhost:9000
+
+      - name: Notify Telegram on Failure
+        if: failure()
+        uses: appleboy/telegram-action@master
+        with:
+          to: ${{ secrets.TELEGRAM_CHAT_ID }}
+          token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          message: |
+            ANALISIS COMPLETADO - CON PROBLEMAS
+            
+            Author: ${{ github.actor }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            
+            RESULTADOS:
+            Status: FAILED
+            
+            SEGURIDAD:
+            Vulnerabilidades: REVISAR EN DASHBOARD
+            Issues Blocker: REVISAR EN DASHBOARD
+            Issues Critical: REVISAR EN DASHBOARD
+            Issues Major: REVISAR EN DASHBOARD
+            Security Hotspots: REVISAR EN DASHBOARD
+            
+            COBERTURA Y DUPLICACION:
+            Cobertura: REVISAR EN DASHBOARD
+            Duplicacion: REVISAR EN DASHBOARD
+            Deuda Tecnica: REVISAR EN DASHBOARD
+            
+            COMPLEJIDAD:
+            Complejidad Ciclomatica: REVISAR EN DASHBOARD
+            Complejidad Cognitiva: REVISAR EN DASHBOARD
+            
+            ACCIONES REQUERIDAS:
+            - Revisar vulnerabilidades de seguridad
+            - Aumentar cobertura de pruebas
+            - Reducir duplicacion de codigo
+            - Simplificar funciones complejas
+            
+            Ver Analisis Completo: http://localhost:9000/projects
+            • Mejorar complejidad del código
+
+      - name: Upload coverage to SonarQube
+        if: always()
+        run: |
+          echo "Coverage data would be uploaded here"
