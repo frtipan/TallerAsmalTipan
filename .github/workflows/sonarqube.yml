@@ -45,6 +45,7 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p reports
+          echo "Starting DAST smoke scan against https://example.com"
           set +e
           docker run --rm --network host \
             -v "$GITHUB_WORKSPACE/reports:/zap/wrk:rw" \
@@ -52,8 +53,10 @@ jobs:
             zap-baseline.py -t https://example.com -J /zap/wrk/zap-report.json -r /zap/wrk/zap-report.html -I
           exit_code=$?
           set -e
+          echo "dast_exit_code=$exit_code"
           echo "dast_exit_code=$exit_code" >> "$GITHUB_OUTPUT"
           if [ -f reports/zap-report.json ]; then
+            echo "DAST report found"
             python - <<'PY'
             import json
             import os
@@ -68,6 +71,7 @@ jobs:
                     for site in data.get("site", []):
                         alerts.extend(site.get("alerts", []))
                     alert_count = len(alerts)
+                    print(f"DAST alerts detected: {alert_count}")
                     if alerts:
                         by_risk = {}
                         for alert in alerts:
@@ -75,6 +79,7 @@ jobs:
                             by_risk[risk] = by_risk.get(risk, 0) + 1
                         for risk in sorted(by_risk):
                             risk_summary.append(f"{risk}: {by_risk[risk]}")
+                        print("DAST risk summary: " + " | ".join(risk_summary))
                 except Exception as exc:
                     print(f"DAST report could not be parsed: {exc}")
             else:
@@ -84,6 +89,7 @@ jobs:
                 fh.write("dast_risk_summary=" + " | ".join(risk_summary) + "\n")
             PY
           else
+            echo "No DAST report generated"
             echo "dast_alert_count=0" >> "$GITHUB_OUTPUT"
             echo "dast_risk_summary=No report generated" >> "$GITHUB_OUTPUT"
           fi
@@ -98,6 +104,8 @@ jobs:
 
       - name: Run SonarQube Analysis
         if: ${{ env.SONAR_LOGIN != '' }}
+        id: sonar
+        continue-on-error: true
         uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_LOGIN }}
@@ -108,6 +116,14 @@ jobs:
             -Dsonar.projectName=App Reservas
             -Dsonar.qualitygate.wait=true
             -Dsonar.exclusions=**/node_modules/**,**/*.test.js,**/dist/**
+
+      - name: Log SonarQube status
+        if: always()
+        run: |
+          echo "SonarQube step completed"
+          if [ -n "${{ steps.sonar.outcome }}" ]; then
+            echo "SonarQube outcome: ${{ steps.sonar.outcome }}"
+          fi
 
       - name: Skip SonarQube when no token
         if: ${{ env.SONAR_LOGIN == '' }}
@@ -133,9 +149,8 @@ jobs:
             Commit: ${{ github.sha }}
 
             🔎 RESULTADOS
-            • SonarQube: análisis de código completado
-            • DAST: escaneo dinámico ejecutado con OWASP ZAP
-            • Estado final: APROBADO
+            • SonarQube: ${{ steps.sonar.outcome || 'skipped' }}
+            • DAST: ${{ steps.dast.outcome || 'skipped' }}
             • Hallazgos DAST: ${{ steps.dast.outputs.dast_alert_count || '0' }}
             • Resumen DAST: ${{ steps.dast.outputs.dast_risk_summary || 'No report generated' }}
 
@@ -160,9 +175,8 @@ jobs:
             Commit: ${{ github.sha }}
 
             🔎 RESULTADOS
-            • SonarQube: revisar resultado del análisis de código
-            • DAST: revisar artefacto y logs del workflow
-            • Estado final: RECHAZADO
+            • SonarQube: ${{ steps.sonar.outcome || 'skipped' }}
+            • DAST: ${{ steps.dast.outcome || 'skipped' }}
             • Hallazgos DAST: ${{ steps.dast.outputs.dast_alert_count || '0' }}
             • Resumen DAST: ${{ steps.dast.outputs.dast_risk_summary || 'No report generated' }}
             • Exit code DAST: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
