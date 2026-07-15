@@ -13,6 +13,8 @@ on:
 env:
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL || 'http://localhost:9000' }}
   SONAR_LOGIN: ${{ secrets.SONAR_LOGIN }}
+  TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+  TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
 jobs:
   quality-dast-analysis:
@@ -119,7 +121,7 @@ jobs:
         run: docker compose down -v --remove-orphans
 
       - name: Notify Telegram on Success
-        if: ${{ success() && secrets.TELEGRAM_CHAT_ID != '' && secrets.TELEGRAM_BOT_TOKEN != '' }}
+        if: ${{ success() && env.TELEGRAM_CHAT_ID != '' && env.TELEGRAM_BOT_TOKEN != '' }}
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -144,7 +146,7 @@ jobs:
             - Puedes revisar los artefactos en la sección de Actions del repositorio
 
       - name: Notify Telegram on Failure
-        if: ${{ failure() && secrets.TELEGRAM_CHAT_ID != '' && secrets.TELEGRAM_BOT_TOKEN != '' }}
+        if: ${{ failure() && env.TELEGRAM_CHAT_ID != '' && env.TELEGRAM_BOT_TOKEN != '' }}
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
