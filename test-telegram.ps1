@@ -15,9 +15,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-Write-Host "📤 Preparando notificación de prueba ($TestType)..." -ForegroundColor Cyan
-Write-Host "🤖 Bot Token: $($BotToken.Substring(0, 20))..." -ForegroundColor Gray
-Write-Host "💬 Chat ID: $ChatId" -ForegroundColor Gray
+Write-Host "[INFO] Preparando notificacion de prueba ($TestType)..." -ForegroundColor Cyan
+Write-Host "[BOT] Token: $($BotToken.Substring(0, 20))..." -ForegroundColor Gray
+Write-Host "[CHAT] Chat ID: $ChatId" -ForegroundColor Gray
 Write-Host ""
 
 # Preparar el mensaje según el tipo de prueba

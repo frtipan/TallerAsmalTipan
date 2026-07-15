@@ -1,4 +1,4 @@
-name: SonarQube Quality Gate Analysis
+name: Quality Gates + DAST Analysis
 
 on:
   push:
@@ -15,20 +15,20 @@ env:
   SONAR_LOGIN: ${{ secrets.SONAR_LOGIN }}
 
 jobs:
-  sonarqube-analysis:
+  quality-dast-analysis:
     runs-on: ubuntu-latest
-    name: SonarQube Analysis
+    name: Quality Gates + DAST Analysis
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
       - name: Install dependencies
         run: |
@@ -38,8 +38,68 @@ jobs:
           npm ci --prefix notification-service
           npm ci --prefix user-service
 
-      - name: Set up SonarQube Scanner
-        uses: SonarSource/sonarqube-scan-action@master
+      - name: Start services with Docker Compose
+        run: |
+          docker compose up -d --build
+          echo "Waiting for the frontend to be ready..."
+          for i in {1..30}; do
+            if curl -fsS http://127.0.0.1:3000 > /dev/null 2>&1; then
+              echo "Frontend is up at http://127.0.0.1:3000"
+              break
+            fi
+            echo "Attempt $i/30: frontend not ready yet"
+            sleep 10
+          done
+          curl -I http://127.0.0.1:3000 || true
+
+      - name: Run DAST scan with OWASP ZAP
+        id: dast
+        continue-on-error: true
+        run: |
+          mkdir -p reports
+          set +e
+          docker run --rm --network host \
+            -v "$GITHUB_WORKSPACE/reports:/zap/wrk:rw" \
+            owasp/zap2docker-stable \
+            zap-baseline.py -t http://127.0.0.1:3000 -J /zap/wrk/zap-report.json -r /zap/wrk/zap-report.html -I
+          exit_code=$?
+          set -e
+          echo "dast_exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+          if [ -f reports/zap-report.json ]; then
+            python - <<'PY'
+            import json
+            from pathlib import Path
+
+            report_path = Path("reports/zap-report.json")
+            if report_path.exists():
+                data = json.loads(report_path.read_text(encoding="utf-8"))
+                alerts = []
+                for site in data.get("site", []):
+                    alerts.extend(site.get("alerts", []))
+                print(f"DAST alerts detected: {len(alerts)}")
+                if alerts:
+                    by_risk = {}
+                    for alert in alerts:
+                        risk = alert.get("risk", "Informational")
+                        by_risk[risk] = by_risk.get(risk, 0) + 1
+                    for risk in sorted(by_risk):
+                        print(f"- {risk}: {by_risk[risk]}")
+            else:
+                print("No DAST report generated")
+            PY
+          fi
+
+      - name: Upload DAST report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-reports
+          path: reports/
+          if-no-files-found: ignore
+
+      - name: Run SonarQube Analysis
+        if: ${{ env.SONAR_LOGIN != '' }}
+        uses: SonarSource/sonarqube-scan-action@v2
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_LOGIN }}
           SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
@@ -50,96 +110,57 @@ jobs:
             -Dsonar.qualitygate.wait=true
             -Dsonar.exclusions=**/node_modules/**,**/*.test.js,**/dist/**
 
-      - name: Check Quality Gate
-        id: quality-gate
-        run: |
-          echo "quality-gate-status=success" >> $GITHUB_OUTPUT
+      - name: Skip SonarQube when no token
+        if: ${{ env.SONAR_LOGIN == '' }}
+        run: echo "Skipping SonarQube analysis because SONAR_LOGIN secret is not configured."
+
+      - name: Cleanup Docker Compose
+        if: always()
+        run: docker compose down -v --remove-orphans
 
       - name: Notify Telegram on Success
-        if: success()
+        if: ${{ success() && secrets.TELEGRAM_CHAT_ID != '' && secrets.TELEGRAM_BOT_TOKEN != '' }}
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ANALISIS COMPLETADO - EXITO
-            
-            Author: ${{ github.actor }}
-            Branch: ${{ github.ref_name }}
+            QUALITY GATES + DAST COMPLETADO
+
+            Ejecutado por: ${{ github.actor }}
+            Evento: ${{ github.event_name }}
+            Rama: ${{ github.ref_name }}
+            Repositorio: ${{ github.repository }}
             Commit: ${{ github.sha }}
-            
+
             RESULTADOS:
-            Status: PASSED
-            
-            SEGURIDAD:
-            Vulnerabilidades: 0
-            Issues Blocker: 0
-            Issues Critical: 0
-            Issues Major: 0
-            Security Hotspots: 100% revisados
-            
-            COBERTURA Y DUPLICACION:
-            Cobertura: 85%
-            Duplicacion: 2.1%
-            Deuda Tecnica: 1.8%
-            
-            COMPLEJIDAD:
-            Complejidad Ciclomatica: 42
-            Complejidad Cognitiva: 28
-            
-            ARCHIVOS ANALIZADOS:
-            - auth-service/
-            - booking-service/
-            - user-service/
-            - notification-service/
-            - frontend/
-            
-            Listo para merge!
-            
-            Dashboard: http://localhost:9000
+            SonarQube: ${{ env.SONAR_LOGIN != '' && 'Ejecutado' || 'Omitido (sin token)' }}
+            DAST: Escaneo dinámico completado
+            Estado del paso DAST: ${{ steps.dast.outputs.dast_exit_code == '0' && 'Sin alertas críticas' || 'Revisar reporte' }}
+
+            Artefactos: dast-reports
 
       - name: Notify Telegram on Failure
-        if: failure()
+        if: ${{ failure() && secrets.TELEGRAM_CHAT_ID != '' && secrets.TELEGRAM_BOT_TOKEN != '' }}
         uses: appleboy/telegram-action@master
         with:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            ANALISIS COMPLETADO - CON PROBLEMAS
-            
-            Author: ${{ github.actor }}
-            Branch: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
-            
-            RESULTADOS:
-            Status: FAILED
-            
-            SEGURIDAD:
-            Vulnerabilidades: REVISAR EN DASHBOARD
-            Issues Blocker: REVISAR EN DASHBOARD
-            Issues Critical: REVISAR EN DASHBOARD
-            Issues Major: REVISAR EN DASHBOARD
-            Security Hotspots: REVISAR EN DASHBOARD
-            
-            COBERTURA Y DUPLICACION:
-            Cobertura: REVISAR EN DASHBOARD
-            Duplicacion: REVISAR EN DASHBOARD
-            Deuda Tecnica: REVISAR EN DASHBOARD
-            
-            COMPLEJIDAD:
-            Complejidad Ciclomatica: REVISAR EN DASHBOARD
-            Complejidad Cognitiva: REVISAR EN DASHBOARD
-            
-            ACCIONES REQUERIDAS:
-            - Revisar vulnerabilidades de seguridad
-            - Aumentar cobertura de pruebas
-            - Reducir duplicacion de codigo
-            - Simplificar funciones complejas
-            
-            Ver Analisis Completo: http://localhost:9000/projects
-            • Mejorar complejidad del código
+            QUALITY GATES + DAST CON PROBLEMAS
 
-      - name: Upload coverage to SonarQube
-        if: always()
-        run: |
-          echo "Coverage data would be uploaded here"
+            Ejecutado por: ${{ github.actor }}
+            Evento: ${{ github.event_name }}
+            Rama: ${{ github.ref_name }}
+            Repositorio: ${{ github.repository }}
+            Commit: ${{ github.sha }}
+
+            RESULTADOS:
+            SonarQube: ${{ env.SONAR_LOGIN != '' && 'Ejecutado' || 'Omitido (sin token)' }}
+            DAST: Revisar el artefacto y los logs del workflow
+            Exit code DAST: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
+
+            Acciones requeridas:
+            - Revisar el reporte DAST en los artefactos del workflow
+            - Corregir vulnerabilidades detectadas
+            - Verificar que los servicios estén respondiendo en la pila Docker
