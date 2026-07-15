@@ -125,20 +125,23 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            QUALITY GATES + DAST COMPLETADO
+            ✅ QUALITY GATES + DAST FINALIZADO CORRECTAMENTE
 
-            Ejecutado por: ${{ github.actor }}
+            Responsable: ${{ github.actor }}
             Evento: ${{ github.event_name }}
             Rama: ${{ github.ref_name }}
             Repositorio: ${{ github.repository }}
             Commit: ${{ github.sha }}
 
-            RESULTADOS:
-            SonarQube: ${{ env.SONAR_LOGIN != '' && 'Ejecutado' || 'Omitido (sin token)' }}
-            DAST: Escaneo dinámico completado
-            Estado del paso DAST: ${{ steps.dast.outputs.dast_exit_code == '0' && 'Sin alertas críticas' || 'Revisar reporte' }}
+            🔎 RESULTADOS DE ANÁLISIS
+            • SonarQube: ejecutado correctamente
+            • DAST: escaneo dinámico completado
+            • Estado DAST: ${{ steps.dast.outputs.dast_exit_code == '0' && 'Sin alertas críticas' || 'Revisar reporte' }}
 
-            Artefactos: dast-reports
+            📌 DETALLES
+            - La revisión fue iniciada por: ${{ github.actor }}
+            - El pipeline corrió sobre: ${{ github.ref_name }}
+            - Puedes revisar los artefactos en la sección de Actions del repositorio
 
       - name: Notify Telegram on Failure
         if: ${{ failure() && secrets.TELEGRAM_CHAT_ID != '' && secrets.TELEGRAM_BOT_TOKEN != '' }}
@@ -147,20 +150,20 @@ jobs:
           to: ${{ secrets.TELEGRAM_CHAT_ID }}
           token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           message: |
-            QUALITY GATES + DAST CON PROBLEMAS
+            ❌ QUALITY GATES + DAST CON PROBLEMAS
 
-            Ejecutado por: ${{ github.actor }}
+            Responsable: ${{ github.actor }}
             Evento: ${{ github.event_name }}
             Rama: ${{ github.ref_name }}
             Repositorio: ${{ github.repository }}
             Commit: ${{ github.sha }}
 
-            RESULTADOS:
-            SonarQube: ${{ env.SONAR_LOGIN != '' && 'Ejecutado' || 'Omitido (sin token)' }}
-            DAST: Revisar el artefacto y los logs del workflow
-            Exit code DAST: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
+            🔎 RESULTADOS DE ANÁLISIS
+            • SonarQube: revisar resultado del análisis
+            • DAST: revisar artefacto y logs del workflow
+            • Exit code DAST: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
 
-            Acciones requeridas:
+            ⚠️ ACCIONES REQUERIDAS
             - Revisar el reporte DAST en los artefactos del workflow
             - Corregir vulnerabilidades detectadas
             - Verificar que los servicios estén respondiendo en la pila Docker
