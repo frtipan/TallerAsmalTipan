@@ -56,27 +56,36 @@ jobs:
           if [ -f reports/zap-report.json ]; then
             python - <<'PY'
             import json
+            import os
             from pathlib import Path
             report_path = Path("reports/zap-report.json")
+            alert_count = 0
+            risk_summary = []
             if report_path.exists():
                 try:
                     data = json.loads(report_path.read_text(encoding="utf-8"))
                     alerts = []
                     for site in data.get("site", []):
                         alerts.extend(site.get("alerts", []))
-                    print(f"DAST alerts detected: {len(alerts)}")
+                    alert_count = len(alerts)
                     if alerts:
                         by_risk = {}
                         for alert in alerts:
                             risk = alert.get("risk", "Informational")
                             by_risk[risk] = by_risk.get(risk, 0) + 1
                         for risk in sorted(by_risk):
-                            print(f"- {risk}: {by_risk[risk]}")
+                            risk_summary.append(f"{risk}: {by_risk[risk]}")
                 except Exception as exc:
                     print(f"DAST report could not be parsed: {exc}")
             else:
                 print("No DAST report generated")
+            with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+                fh.write(f"dast_alert_count={alert_count}\n")
+                fh.write("dast_risk_summary=" + " | ".join(risk_summary) + "\n")
             PY
+          else
+            echo "dast_alert_count=0" >> "$GITHUB_OUTPUT"
+            echo "dast_risk_summary=No report generated" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Upload DAST report
@@ -127,7 +136,8 @@ jobs:
             • SonarQube: análisis de código completado
             • DAST: escaneo dinámico ejecutado con OWASP ZAP
             • Estado final: APROBADO
-            • Hallazgos DAST: revisar artefacto si aplica
+            • Hallazgos DAST: ${{ steps.dast.outputs.dast_alert_count || '0' }}
+            • Resumen DAST: ${{ steps.dast.outputs.dast_risk_summary || 'No report generated' }}
 
             📌 DETALLES
             - Responsable del análisis: ${{ github.actor }}
@@ -153,6 +163,8 @@ jobs:
             • SonarQube: revisar resultado del análisis de código
             • DAST: revisar artefacto y logs del workflow
             • Estado final: RECHAZADO
+            • Hallazgos DAST: ${{ steps.dast.outputs.dast_alert_count || '0' }}
+            • Resumen DAST: ${{ steps.dast.outputs.dast_risk_summary || 'No report generated' }}
             • Exit code DAST: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
 
             ⚠️ ACCIONES REQUERIDAS
