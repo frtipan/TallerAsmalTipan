@@ -77,37 +77,65 @@ jobs:
         run: docker compose down -v --remove-orphans
 
       - name: Notify Telegram - Kevin
-        if: ${{ always() && env.TELEGRAM_CHAT_ID != '' && env.TELEGRAM_BOT_TOKEN != '' }}
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ env.TELEGRAM_CHAT_ID }}
-          token: ${{ env.TELEGRAM_BOT_TOKEN }}
-          message: |
-            Reporte Kevin — Escaneo DAST
+        if: ${{ always() }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets are missing; skipping notification"
+            exit 0
+          fi
 
-            Repositorio: ${{ github.repository }}
-            Rama: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
-            Responsable: ${{ github.actor }}
-            Resultado: ${{ steps.dast.outcome || 'skipped' }}
+          MESSAGE=$(cat <<EOF
+          Reporte Kevin — Escaneo DAST
+
+          Repositorio: ${{ github.repository }}
+          Rama: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Responsable: ${{ github.actor }}
+          Resultado: ${{ steps.dast.outcome || 'skipped' }}
+          EOF
+          )
+
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}" \
+            --data-urlencode "parse_mode=HTML" \
+            -o /tmp/telegram-kevin.json
+          cat /tmp/telegram-kevin.json
 
       - name: Notify Telegram - Fernando
-        if: ${{ always() && env.TELEGRAM_CHAT_ID != '' && env.TELEGRAM_BOT_TOKEN != '' }}
-        uses: appleboy/telegram-action@master
-        with:
-          to: ${{ env.TELEGRAM_CHAT_ID }}
-          token: ${{ env.TELEGRAM_BOT_TOKEN }}
-          message: |
-            Reporte Fernando — Vulnerabilidades DAST
+        if: ${{ always() }}
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets are missing; skipping notification"
+            exit 0
+          fi
 
-            Repositorio: ${{ github.repository }}
-            Rama: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
-            Responsable: ${{ github.actor }}
+          MESSAGE=$(cat <<EOF
+          Reporte Fernando — Vulnerabilidades DAST
 
-            Hallazgos: ${{ steps.dast.outputs.dast_alert_count || '0' }}
-            Resumen: ${{ steps.dast.outputs.dast_risk_summary || 'No report generated' }}
-            Exit code: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
+          Repositorio: ${{ github.repository }}
+          Rama: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          Responsable: ${{ github.actor }}
 
-            Vulnerabilidades:
-            ${{ steps.dast.outputs.dast_vulnerabilities || '- No report generated' }}
+          Hallazgos: ${{ steps.dast.outputs.dast_alert_count || '0' }}
+          Resumen: ${{ steps.dast.outputs.dast_risk_summary || 'No report generated' }}
+          Exit code: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
+
+          Vulnerabilidades:
+          ${{ steps.dast.outputs.dast_vulnerabilities || '- No report generated' }}
+          EOF
+          )
+
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}" \
+            --data-urlencode "parse_mode=HTML" \
+            -o /tmp/telegram-fernando.json
+          cat /tmp/telegram-fernando.json
