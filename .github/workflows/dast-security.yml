@@ -1,4 +1,4 @@
-name: Quality Gates + DAST Analysis
+name: DAST Security Scan
 
 on:
   push:
@@ -9,68 +9,39 @@ on:
     branches:
       - main
       - master
+  workflow_dispatch:
 
 env:
-  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL || 'http://localhost:9000' }}
-  SONAR_LOGIN: ${{ secrets.SONAR_LOGIN }}
   TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
   TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
 jobs:
-  quality-dast-analysis:
+  dast-scan:
     runs-on: ubuntu-latest
-    name: Quality Gates + DAST Analysis
+    name: DAST Security Scan
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Verify Docker availability
-        run: |
-          docker --version
-          docker compose version
 
       - name: Start application stack
-        run: |
-          docker compose up -d --build
+        run: docker compose up -d --build
 
-      - name: Wait for frontend readiness
+      - name: Wait for frontend
         run: |
           for i in {1..30}; do
             if curl -fsS http://127.0.0.1:3000 >/dev/null 2>&1; then
-              echo "Frontend is up"
+              echo "Frontend is ready"
               exit 0
             fi
-            echo "Waiting for frontend on port 3000..."
+            echo "Waiting for frontend..."
             sleep 10
           done
-          echo "Frontend did not become ready in time"
           docker compose ps
           docker compose logs --tail=200
           exit 1
 
-      - name: Run SonarQube Analysis
-        if: ${{ env.SONAR_LOGIN != '' }}
-        id: sonar
-        continue-on-error: true
-        uses: SonarSource/sonarqube-scan-action@v2
-        env:
-          SONAR_TOKEN: ${{ env.SONAR_LOGIN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=app-reservas
-            -Dsonar.projectName=App Reservas
-            -Dsonar.qualitygate.wait=true
-            -Dsonar.exclusions=**/node_modules/**,**/*.test.js,**/dist/**
-
-      - name: Skip SonarQube when no token
-        if: ${{ env.SONAR_LOGIN == '' }}
-        run: echo "Skipping SonarQube analysis because SONAR_LOGIN secret is not configured."
-
-      - name: Run DAST smoke scan with OWASP ZAP
+      - name: Run OWASP ZAP baseline scan
         id: dast
         continue-on-error: true
         run: |
@@ -88,17 +59,16 @@ jobs:
             echo "dast_risk_summary=DAST report generated; inspect the workflow artifacts" >> "$GITHUB_OUTPUT"
             echo "dast_vulnerabilities=- Review the ZAP report in the workflow artifacts" >> "$GITHUB_OUTPUT"
           else
-            echo "No DAST report generated"
             echo "dast_alert_count=0" >> "$GITHUB_OUTPUT"
             echo "dast_risk_summary=No report generated" >> "$GITHUB_OUTPUT"
             echo "dast_vulnerabilities=- No report generated" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Upload DAST report
+      - name: Upload DAST artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: dast-reports
+          name: dast-security-reports
           path: reports/
           if-no-files-found: ignore
 
@@ -106,42 +76,38 @@ jobs:
         if: always()
         run: docker compose down -v --remove-orphans
 
-      - name: Notify Telegram - Kevin (SonarQube)
+      - name: Notify Telegram - Kevin
         if: ${{ always() && env.TELEGRAM_CHAT_ID != '' && env.TELEGRAM_BOT_TOKEN != '' }}
         uses: appleboy/telegram-action@master
         with:
           to: ${{ env.TELEGRAM_CHAT_ID }}
           token: ${{ env.TELEGRAM_BOT_TOKEN }}
           message: |
-            Reporte 1 — Kevin (SonarQube)
+            Reporte Kevin — Escaneo DAST
 
-            Responsable: ${{ github.actor }}
-            Evento: ${{ github.event_name }}
-            Rama: ${{ github.ref_name }}
             Repositorio: ${{ github.repository }}
+            Rama: ${{ github.ref_name }}
             Commit: ${{ github.sha }}
+            Responsable: ${{ github.actor }}
+            Resultado: ${{ steps.dast.outcome || 'skipped' }}
 
-            Resultado SonarQube: ${{ steps.sonar.outcome || 'skipped' }}
-            Estado general: ${{ job.status }}
-
-      - name: Notify Telegram - Fernando (DAST vulnerabilities)
+      - name: Notify Telegram - Fernando
         if: ${{ always() && env.TELEGRAM_CHAT_ID != '' && env.TELEGRAM_BOT_TOKEN != '' }}
         uses: appleboy/telegram-action@master
         with:
           to: ${{ env.TELEGRAM_CHAT_ID }}
           token: ${{ env.TELEGRAM_BOT_TOKEN }}
           message: |
-            Reporte 2 — Fernando (DAST)
+            Reporte Fernando — Vulnerabilidades DAST
 
-            Responsable: ${{ github.actor }}
-            Evento: ${{ github.event_name }}
-            Rama: ${{ github.ref_name }}
             Repositorio: ${{ github.repository }}
+            Rama: ${{ github.ref_name }}
             Commit: ${{ github.sha }}
+            Responsable: ${{ github.actor }}
 
-            Hallazgos DAST: ${{ steps.dast.outputs.dast_alert_count || '0' }}
+            Hallazgos: ${{ steps.dast.outputs.dast_alert_count || '0' }}
             Resumen: ${{ steps.dast.outputs.dast_risk_summary || 'No report generated' }}
             Exit code: ${{ steps.dast.outputs.dast_exit_code || 'No disponible' }}
 
-            Vulnerabilidades detectadas:
+            Vulnerabilidades:
             ${{ steps.dast.outputs.dast_vulnerabilities || '- No report generated' }}
