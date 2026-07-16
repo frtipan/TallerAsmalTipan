@@ -3,10 +3,10 @@
 
 param(
     [Parameter(Mandatory=$false)]
-    [string]$BotToken = "8846138406:AAGi34fd5fREf7PcPBT-SHxTTNVJGeKKgFY",
+    [string]$BotToken = $env:TELEGRAM_BOT_TOKEN,
     
     [Parameter(Mandatory=$false)]
-    [string]$ChatId = "8750807638",
+    [string]$ChatId = $env:TELEGRAM_CHAT_ID,
     
     [Parameter(Mandatory=$false)]
     [ValidateSet("test", "success", "failure")]
@@ -14,6 +14,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ([string]::IsNullOrWhiteSpace($BotToken)) {
+    $BotToken = "8846138406:AAGi34fd5fREf7PcPBT-SHxTTNVJGeKKgFY"
+}
+
+if ([string]::IsNullOrWhiteSpace($ChatId)) {
+    $ChatId = "-5483065079"
+}
 
 Write-Host "[INFO] Preparando notificacion de prueba ($TestType)..." -ForegroundColor Cyan
 Write-Host "[BOT] Token: $($BotToken.Substring(0, 20))..." -ForegroundColor Gray

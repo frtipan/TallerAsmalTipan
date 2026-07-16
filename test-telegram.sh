@@ -4,8 +4,8 @@
 
 set -e
 
-BOT_TOKEN="${1}"
-CHAT_ID="${2}"
+BOT_TOKEN="${1:-${TELEGRAM_BOT_TOKEN:-8846138406:AAGi34fd5fREf7PcPBT-SHxTTNVJGeKKgFY}}"
+CHAT_ID="${2:-${TELEGRAM_CHAT_ID:-"-5483065079"}}"
 TEST_TYPE="${3:-test}"
 
 if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
