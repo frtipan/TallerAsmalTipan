@@ -113,11 +113,16 @@ jobs:
         run: docker compose down -v --remove-orphans
 
       - name: Notify Telegram - Kevin (SonarQube)
-        if: ${{ always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        if: ${{ always() }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets are missing; skipping notification"
+            exit 0
+          fi
+
           MESSAGE=$(cat <<EOF
           Reporte 1 — Kevin (SonarQube)
 
@@ -140,11 +145,16 @@ jobs:
           cat /tmp/telegram-kevin.json
 
       - name: Notify Telegram - Fernando (DAST vulnerabilities)
-        if: ${{ always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+        if: ${{ always() }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets are missing; skipping notification"
+            exit 0
+          fi
+
           MESSAGE=$(cat <<EOF
           Reporte 2 — Fernando (DAST)
 
